@@ -327,12 +327,11 @@ function handleClick(event) {
 function handleHover(event) {
     const colorType = getColorAtPosition(event.clientX, event.clientY);
     
-    console.log('懸停檢測:', colorType); // 調試信息
-    
     if (colorType) {
         document.getElementById('panorama').style.cursor = 'pointer';
-        console.log('顯示高亮:', colorType);
-        drawHighlight(event.clientX, event.clientY, colorType);
+        console.log('✓ 顯示高亮:', colorType);
+        // 先用簡單的圓圈測試
+        drawSimpleHighlight(event.clientX, event.clientY, colorType);
     } else {
         document.getElementById('panorama').style.cursor = 'default';
         clearHighlight();
@@ -456,6 +455,47 @@ function checkIfEdgeInPanorama(x, y, width, height, pixels, targetColor) {
     return false;
 }
 
+
+// 繪製簡單高亮（測試用 - 在鼠標位置繪製圓圈）
+function drawSimpleHighlight(x, y, colorType) {
+    if (!highlightCtx) {
+        console.log('highlightCtx 不存在');
+        return;
+    }
+    
+    clearHighlight();
+    
+    const colorMap = {
+        '客餐廳': 'rgba(0, 255, 255, 0.9)', // 青色
+        '主臥室': 'rgba(255, 255, 0, 0.9)', // 黃色
+        '次臥室': 'rgba(0, 0, 255, 0.9)', // 藍色
+        'sofa': 'rgba(0, 255, 0, 0.9)', // 綠色
+        'table': 'rgba(255, 0, 0, 0.9)' // 紅色
+    };
+    
+    const highlightColor = colorMap[colorType];
+    console.log('繪製高亮圓圈，位置:', x, y, '顏色:', colorType);
+    
+    // 繪製一個大圓圈作為高亮指示
+    highlightCtx.beginPath();
+    highlightCtx.arc(x, y, 40, 0, Math.PI * 2);
+    highlightCtx.strokeStyle = highlightColor;
+    highlightCtx.lineWidth = 4;
+    highlightCtx.setLineDash([10, 5]);
+    highlightCtx.shadowBlur = 15;
+    highlightCtx.shadowColor = highlightColor;
+    highlightCtx.stroke();
+    
+    // 內圈
+    highlightCtx.beginPath();
+    highlightCtx.arc(x, y, 30, 0, Math.PI * 2);
+    highlightCtx.strokeStyle = highlightColor;
+    highlightCtx.lineWidth = 2;
+    highlightCtx.setLineDash([5, 3]);
+    highlightCtx.stroke();
+    
+    console.log('✓ 高亮繪製完成');
+}
 
 // 清除高亮
 function clearHighlight() {
