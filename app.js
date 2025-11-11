@@ -178,19 +178,33 @@ function updateIDCanvas() {
 // 獲取當前圖片路徑
 function getCurrentImagePath() {
     const scene = scenes[currentState.scene];
+    let path;
     if (scene.hasFurniture) {
-        return `${scene.basePath}_${currentState.sofa}沙發_${currentState.table}茶几.jpg`;
+        // 客餐廳：環景圖/客餐廳_A沙發_A茶几.jpg
+        path = `${scene.basePath}_${currentState.sofa}沙發_${currentState.table}茶几.jpg`;
+    } else {
+        // 主臥室：環景圖/主臥室.jpg
+        // 次臥室：環景圖/次臥室.jpg
+        path = `${scene.basePath}.jpg`;
     }
-    return `${scene.basePath}.jpg`;
+    console.log('生成圖片路徑:', path);
+    return path;
 }
 
 // 獲取當前ID圖片路徑
 function getCurrentIDImagePath() {
     const scene = scenes[currentState.scene];
+    let path;
     if (scene.hasFurniture) {
-        return `${scene.basePath}_${currentState.sofa}沙發_${currentState.table}茶几_ID.jpg`;
+        // 客餐廳：環景圖/客餐廳_A沙發_A茶几_ID.jpg
+        path = `${scene.basePath}_${currentState.sofa}沙發_${currentState.table}茶几_ID.jpg`;
+    } else {
+        // 主臥室：環景圖/主臥室_ID.jpg
+        // 次臥室：環景圖/次臥室_ID.jpg
+        path = `${scene.basePath}_ID.jpg`;
     }
-    return `${scene.basePath}_ID.jpg`;
+    console.log('生成ID圖路徑:', path);
+    return path;
 }
 
 // 獲取點擊位置對應的顏色類型（用於點擊和懸停檢測）
@@ -538,8 +552,20 @@ function loadPanorama() {
     
     // 處理加載錯誤
     viewer.once('error', (error) => {
-        console.error('加載全景圖失敗:', error, imagePath);
-        alert('無法加載全景圖: ' + imagePath + '\n請檢查圖片路徑是否正確');
+        console.error('加載全景圖失敗:', error);
+        console.error('嘗試加載的路徑:', imagePath);
+        console.error('請確認圖片檔案是否存在於該路徑');
+        
+        // 嘗試檢查圖片是否存在
+        const img = new Image();
+        img.onload = () => {
+            console.log('圖片檔案存在，但pannellum無法加載');
+        };
+        img.onerror = () => {
+            console.error('圖片檔案不存在或無法訪問:', imagePath);
+            alert('無法加載全景圖: ' + imagePath + '\n請檢查圖片路徑是否正確\n\n提示：在GitHub Pages上，路徑應該是相對路徑');
+        };
+        img.src = imagePath;
     });
 }
 
