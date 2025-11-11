@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>環景圖導覽網站</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="panorama"></div>
+    
+    <!-- 控制面板 -->
+    <div id="control-panel">
+        <div class="control-section">
+            <h3>場景選擇</h3>
+            <button class="scene-btn" data-scene="客餐廳">客餐廳</button>
+            <button class="scene-btn" data-scene="主臥室">主臥室</button>
+            <button class="scene-btn" data-scene="次臥室">次臥室</button>
+        </div>
+        
+        <div class="control-section" id="furniture-controls" style="display: none;">
+            <h3>沙發選擇</h3>
+            <button class="sofa-btn" data-sofa="A">沙發 A</button>
+            <button class="sofa-btn" data-sofa="B">沙發 B</button>
+            <button class="sofa-btn" data-sofa="C">沙發 C</button>
+            
+            <h3>茶几選擇</h3>
+            <button class="table-btn" data-table="A">茶几 A</button>
+            <button class="table-btn" data-table="B">茶几 B</button>
+            <button class="table-btn" data-table="C">茶几 C</button>
+        </div>
+        
+        <div class="info-section">
+            <p>當前場景: <span id="current-scene">客餐廳</span></p>
+            <p>當前沙發: <span id="current-sofa">A</span></p>
+            <p>當前茶几: <span id="current-table">A</span></p>
+        </div>
+        
+        <div class="hint-section">
+            <p>💡 提示：點擊全景圖中的彩色區域</p>
+            <p>🩷 粉色 = 切換到客餐廳</p>
+            <p>🟡 黃色 = 切換到主臥室</p>
+            <p>🔵 藍色 = 切換到次臥室</p>
+            <p>🟢 綠色 = 替換沙發（僅客餐廳）</p>
+            <p>🔴 紅色 = 替換茶几（僅客餐廳）</p>
+        </div>
+    </div>
+    
+    <!-- 隱藏的ID圖用於顏色檢測（用戶看不到，僅用於後台檢測可點選區域） -->
+    <canvas id="id-canvas" style="display: none;"></canvas>
+    
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+
