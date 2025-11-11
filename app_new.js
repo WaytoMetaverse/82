@@ -248,21 +248,39 @@ function handleHover(event) {
 
 // 獲取鼠標位置的顏色（直接從ID查看器的渲染canvas讀取）
 function getColorAtPosition(clientX, clientY) {
-    if (!idViewer) return null;
+    console.log('getColorAtPosition 開始...');
+    
+    if (!idViewer) {
+        console.log('❌ idViewer 不存在');
+        return null;
+    }
     
     const idPanoramaDiv = document.getElementById('id-panorama');
-    if (!idPanoramaDiv) return null;
+    if (!idPanoramaDiv) {
+        console.log('❌ id-panorama div 不存在');
+        return null;
+    }
     
     const idCanvas = idPanoramaDiv.querySelector('canvas');
-    if (!idCanvas) return null;
+    if (!idCanvas) {
+        console.log('❌ ID canvas 不存在');
+        return null;
+    }
+    
+    console.log('✓ ID canvas 存在，尺寸:', idCanvas.width, 'x', idCanvas.height);
     
     const panoramaDiv = document.getElementById('panorama');
     const mainCanvas = panoramaDiv.querySelector('canvas');
-    if (!mainCanvas) return null;
+    if (!mainCanvas) {
+        console.log('❌ 主 canvas 不存在');
+        return null;
+    }
     
     const rect = mainCanvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
+    
+    console.log('鼠標位置:', x, y, '主canvas尺寸:', mainCanvas.width, 'x', mainCanvas.height);
     
     try {
         const ctx = idCanvas.getContext('2d');
@@ -271,13 +289,13 @@ function getColorAtPosition(clientX, clientY) {
         const px = Math.floor(x * scaleX);
         const py = Math.floor(y * scaleY);
         
+        console.log('縮放比例:', scaleX.toFixed(2), scaleY.toFixed(2), '像素位置:', px, py);
+        
         if (px >= 0 && px < idCanvas.width && py >= 0 && py < idCanvas.height) {
             const pixel = ctx.getImageData(px, py, 1, 1).data;
             const r = pixel[0], g = pixel[1], b = pixel[2];
             
-            if (r !== 0 || g !== 0 || b !== 0) {
-                console.log(`讀取RGB: (${r}, ${g}, ${b})`);
-            }
+            console.log(`讀取RGB: (${r}, ${g}, ${b})`);
             
             // 檢測顏色
             for (const [key, color] of Object.entries(colorIDs)) {
@@ -285,17 +303,25 @@ function getColorAtPosition(clientX, clientY) {
                     if (currentState.scene !== '客餐廳') continue;
                 }
                 
-                if (Math.abs(r - color.r) <= 15 && 
-                    Math.abs(g - color.g) <= 15 && 
-                    Math.abs(b - color.b) <= 15) {
+                const dr = Math.abs(r - color.r);
+                const dg = Math.abs(g - color.g);
+                const db = Math.abs(b - color.b);
+                
+                console.log(`檢查 ${key}: 目標(${color.r},${color.g},${color.b}) 差異(${dr},${dg},${db})`);
+                
+                if (dr <= 15 && dg <= 15 && db <= 15) {
+                    console.log(`✓✓✓ 匹配到: ${key}`);
                     return key;
                 }
             }
+        } else {
+            console.log('像素位置超出範圍');
         }
     } catch (e) {
         console.error('讀取失敗:', e);
     }
     
+    console.log('沒有匹配的顏色');
     return null;
 }
 
