@@ -272,30 +272,101 @@ function handleHover(event) {
     }
 }
 
-// 繪製高亮框
+// 繪製高亮框 - 沿著ID圖的物件形狀繪製輪廓
 function drawHighlight(x, y, colorType) {
-    if (!highlightCtx) return;
+    if (!highlightCtx || !idCanvas || !idCtx || !idImage || !idImage.complete) return;
     
     clearHighlight();
     
+    const targetColor = colorIDs[colorType];
+    if (!targetColor) return;
+    
+    // 獲取pannellum畫布
+    const panoramaDiv = document.getElementById('panorama');
+    const canvas = panoramaDiv.querySelector('canvas');
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    // 獲取ID圖中的所有匹配顏色的像素
+    const imageData = idCtx.getImageData(0, 0, idCanvas.width, idCanvas.height);
+    const pixels = imageData.data;
+    const width = idCanvas.width;
+    const height = idCanvas.height;
+    
+    // 繪製輪廓
     const colorMap = {
-        '客餐廳': 'rgba(0, 255, 255, 0.8)',
-        '主臥室': 'rgba(255, 255, 0, 0.8)',
-        '次臥室': 'rgba(0, 0, 255, 0.8)',
-        'sofa': 'rgba(0, 255, 0, 0.8)',
-        'table': 'rgba(255, 0, 0, 0.8)'
+        '客餐廳': 'rgba(0, 255, 255, 0.9)',
+        '主臥室': 'rgba(255, 255, 0, 0.9)',
+        '次臥室': 'rgba(0, 0, 255, 0.9)',
+        'sofa': 'rgba(0, 255, 0, 0.9)',
+        'table': 'rgba(255, 0, 0, 0.9)'
     };
     
-    const color = colorMap[colorType] || 'rgba(255, 255, 255, 0.8)';
-    const size = 60; // 高亮框大小
+    const highlightColor = colorMap[colorType] || 'rgba(255, 255, 255, 0.9)';
     
-    highlightCtx.strokeStyle = color;
+    highlightCtx.strokeStyle = highlightColor;
     highlightCtx.lineWidth = 3;
-    highlightCtx.setLineDash([10, 5]);
-    highlightCtx.shadowBlur = 15;
-    highlightCtx.shadowColor = color;
+    highlightCtx.setLineDash([8, 4]);
+    highlightCtx.shadowBlur = 12;
+    highlightCtx.shadowColor = highlightColor;
     
-    highlightCtx.strokeRect(x - size/2, y - size/2, size, size);
+    highlightCtx.beginPath();
+    
+    // 檢測邊緣並繪製輪廓
+    for (let py = 0; py < height; py += 2) {
+        for (let px = 0; px < width; px += 2) {
+            const idx = (py * width + px) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            
+            if (isColorMatch(r, g, b, targetColor)) {
+                // 檢查是否是邊緣像素（周圍有不匹配的像素）
+                const isEdge = checkIfEdge(px, py, width, height, pixels, targetColor);
+                
+                if (isEdge) {
+                    // 轉換到屏幕座標
+                    const screenX = (px / scaleX) + rect.left;
+                    const screenY = (py / scaleY) + rect.top;
+                    
+                    // 繪製點
+                    highlightCtx.fillStyle = highlightColor;
+                    highlightCtx.fillRect(screenX - 1, screenY - 1, 2, 2);
+                }
+            }
+        }
+    }
+    
+    highlightCtx.stroke();
+}
+
+// 檢查像素是否在邊緣
+function checkIfEdge(x, y, width, height, pixels, targetColor) {
+    // 檢查四周的像素
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    
+    for (const [dx, dy] of directions) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+            return true; // 邊界也算邊緣
+        }
+        
+        const idx = (ny * width + nx) * 4;
+        const r = pixels[idx];
+        const g = pixels[idx + 1];
+        const b = pixels[idx + 2];
+        
+        if (!isColorMatch(r, g, b, targetColor)) {
+            return true; // 相鄰像素顏色不同，這是邊緣
+        }
+    }
+    
+    return false;
 }
 
 // 清除高亮
