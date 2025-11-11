@@ -227,19 +227,31 @@ function getColorAtPosition(clientX, clientY) {
     }
     
     try {
-        // 使用Pannellum的API獲取滑鼠位置對應的pitch和yaw
         const rect = canvas.getBoundingClientRect();
         const x = clientX - rect.left;
         const y = clientY - rect.top;
         
-        // Pannellum的mouseEventToCoords方法可以將屏幕座標轉換為pitch/yaw
-        const coords = viewer.mouseEventToCoords([x, y]);
-        if (!coords) {
-            return null;
-        }
+        // 獲取當前的視角參數
+        const currentPitch = viewer.getPitch();
+        const currentYaw = viewer.getYaw();
+        const currentHfov = viewer.getHfov();
         
-        const pitch = coords[0]; // 俯仰角
-        const yaw = coords[1];   // 偏航角
+        // 將屏幕座標轉換為相對於畫布中心的標準化座標
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const offsetX = x - centerX;
+        const offsetY = y - centerY;
+        
+        // 計算視野的垂直和水平範圍
+        const vfov = 2 * Math.atan(Math.tan(currentHfov * Math.PI / 360) * (rect.height / rect.width)) * 180 / Math.PI;
+        
+        // 根據偏移量計算pitch和yaw的變化
+        const yawOffset = (offsetX / rect.width) * currentHfov;
+        const pitchOffset = -(offsetY / rect.height) * vfov;
+        
+        // 計算最終的pitch和yaw
+        const pitch = currentPitch + pitchOffset;
+        const yaw = currentYaw + yawOffset;
         
         // 將pitch和yaw轉換為全景圖上的像素位置
         // 全景圖是等距柱狀投影（equirectangular）
@@ -249,13 +261,20 @@ function getColorAtPosition(clientX, clientY) {
         const imgHeight = idImage.height;
         
         // yaw範圍: -180到180，對應圖片的0到width
-        const pixelX = Math.floor(((yaw + 180) / 360) * imgWidth) % imgWidth;
-        // pitch範圍: -90到90，對應圖片的0到height（但是反向的）
+        // 確保yaw在-180到180之間
+        let normalizedYaw = yaw;
+        while (normalizedYaw > 180) normalizedYaw -= 360;
+        while (normalizedYaw < -180) normalizedYaw += 360;
+        
+        const pixelX = Math.floor(((normalizedYaw + 180) / 360) * imgWidth);
+        // pitch範圍: -90到90，對應圖片的0到height（反向）
         const pixelY = Math.floor(((90 - pitch) / 180) * imgHeight);
         
-        console.log(`滑鼠位置 -> pitch: ${pitch.toFixed(2)}, yaw: ${yaw.toFixed(2)} -> 像素(${pixelX}, ${pixelY})`);
+        console.log(`滑鼠位置 -> pitch: ${pitch.toFixed(2)}, yaw: ${normalizedYaw.toFixed(2)} -> 像素(${pixelX}, ${pixelY})`);
         
-        if (pixelX < 0 || pixelX >= imgWidth || pixelY < 0 || pixelY >= imgHeight) {
+        // 驗證像素坐標是否有效
+        if (!isFinite(pixelX) || !isFinite(pixelY) || pixelX < 0 || pixelX >= imgWidth || pixelY < 0 || pixelY >= imgHeight) {
+            console.log('像素坐標無效');
             return null;
         }
         
