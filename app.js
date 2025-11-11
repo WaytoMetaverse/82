@@ -49,6 +49,9 @@ let lastCursorType = null; // 緩存上一次的游標類型
 let hoverThrottleTimer = null; // 節流計時器
 let lastHoverTime = 0; // 上次執行懸停檢測的時間
 let hoverTooltip = null; // 懸停提示框元素
+let highlightCanvas = null; // 高亮框線畫布
+let highlightCtx = null; // 高亮框線畫布上下文
+let currentHighlightRegion = null; // 當前高亮區域
 
 // 初始化
 function init() {
@@ -106,6 +109,9 @@ function init() {
     // 初始化懸停提示框
     initHoverTooltip();
     
+    // 初始化高亮框線畫布
+    initHighlightCanvas();
+    
     // 更新UI
     updateUI();
 }
@@ -113,7 +119,8 @@ function init() {
 // 初始化ID圖畫布
 function initIDCanvas() {
     idCanvas = document.getElementById('id-canvas');
-    idCtx = idCanvas.getContext('2d');
+    // 設置 willReadFrequently 以優化頻繁讀取性能
+    idCtx = idCanvas.getContext('2d', { willReadFrequently: true });
     
     // 加載ID圖
     loadIDImage();
@@ -127,6 +134,32 @@ function initHoverTooltip() {
         hoverTooltip.id = 'hover-tooltip';
         hoverTooltip.className = 'hover-tooltip';
         document.body.appendChild(hoverTooltip);
+    }
+}
+
+// 初始化高亮框線畫布
+function initHighlightCanvas() {
+    highlightCanvas = document.getElementById('highlight-canvas');
+    if (!highlightCanvas) {
+        highlightCanvas = document.createElement('canvas');
+        highlightCanvas.id = 'highlight-canvas';
+        highlightCanvas.className = 'highlight-canvas';
+        document.body.appendChild(highlightCanvas);
+    }
+    highlightCtx = highlightCanvas.getContext('2d');
+    
+    // 設置畫布大小
+    updateHighlightCanvasSize();
+    
+    // 監聽窗口大小變化
+    window.addEventListener('resize', updateHighlightCanvasSize);
+}
+
+// 更新高亮畫布大小
+function updateHighlightCanvasSize() {
+    if (highlightCanvas) {
+        highlightCanvas.width = window.innerWidth;
+        highlightCanvas.height = window.innerHeight;
     }
 }
 
@@ -308,19 +341,24 @@ function handlePanoramaHover(event) {
         
         if (!panoramaContainer) return;
         
-        // 更新游標樣式和提示框
+        // 更新游標樣式、提示框和高亮框
         if (colorType !== lastCursorType) {
             if (colorType) {
                 panoramaContainer.style.cursor = 'pointer';
                 showTooltip(event.clientX, event.clientY, colorType);
+                showHighlight(event.clientX, event.clientY, colorType);
             } else {
                 panoramaContainer.style.cursor = 'default';
                 hideTooltip();
+                hideHighlight();
             }
             lastCursorType = colorType;
         } else if (colorType) {
-            // 如果顏色類型沒變但仍在可點選區域，更新提示框位置
+            // 如果顏色類型沒變但仍在可點選區域，更新提示框位置和高亮框
             updateTooltipPosition(event.clientX, event.clientY);
+            updateHighlight(event.clientX, event.clientY, colorType);
+        } else {
+            hideHighlight();
         }
         
         hoverThrottleTimer = null;
@@ -392,6 +430,138 @@ function hideTooltip() {
     if (hoverTooltip) {
         hoverTooltip.classList.remove('show');
     }
+}
+
+// 獲取顏色對應的高亮框線顏色
+function getHighlightColor(colorType) {
+    const colorMap = {
+        '客餐廳': 'rgba(0, 255, 255, 0.8)', // 青色
+        '主臥室': 'rgba(255, 255, 0, 0.8)', // 黃色
+        '次臥室': 'rgba(0, 0, 255, 0.8)', // 藍色
+        'sofa': 'rgba(0, 255, 0, 0.8)', // 綠色
+        'table': 'rgba(255, 0, 0, 0.8)' // 紅色
+    };
+    return colorMap[colorType] || 'rgba(255, 255, 255, 0.8)';
+}
+
+// 檢測ID圖中相同顏色的區域邊界（簡化版本，在滑鼠周圍繪製高亮框）
+function detectColorRegion(x, y, targetColor) {
+    if (!idCanvas || !idCtx || !idImage || !idImage.complete) {
+        return null;
+    }
+    
+    const pannellumCanvas = document.querySelector('#panorama canvas');
+    if (!pannellumCanvas) return null;
+    
+    const canvasRect = pannellumCanvas.getBoundingClientRect();
+    const scaleX = pannellumCanvas.width / canvasRect.width;
+    const scaleY = pannellumCanvas.height / canvasRect.height;
+    const canvasX = Math.floor((x - canvasRect.left) * scaleX);
+    const canvasY = Math.floor((y - canvasRect.top) * scaleY);
+    
+    // 簡化版本：在滑鼠位置周圍檢測一個小區域
+    const searchRadius = 50; // 搜索半徑（像素）
+    let minX = canvasX, maxX = canvasX, minY = canvasY, maxY = canvasY;
+    let foundPixels = 0;
+    
+    // 在搜索範圍內檢測相同顏色的像素
+    for (let dy = -searchRadius; dy <= searchRadius; dy += 2) {
+        for (let dx = -searchRadius; dx <= searchRadius; dx += 2) {
+            const px = canvasX + dx;
+            const py = canvasY + dy;
+            
+            if (px < 0 || px >= idCanvas.width || py < 0 || py >= idCanvas.height) continue;
+            
+            try {
+                const pixel = idCtx.getImageData(px, py, 1, 1).data;
+                if (isColorMatch(pixel[0], pixel[1], pixel[2], targetColor)) {
+                    foundPixels++;
+                    minX = Math.min(minX, px);
+                    maxX = Math.max(maxX, px);
+                    minY = Math.min(minY, py);
+                    maxY = Math.max(maxY, py);
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+    }
+    
+    if (foundPixels < 5) return null; // 區域太小，不顯示
+    
+    // 轉換回屏幕座標
+    return {
+        x: (minX / scaleX) + canvasRect.left,
+        y: (minY / scaleY) + canvasRect.top,
+        width: (maxX - minX) / scaleX,
+        height: (maxY - minY) / scaleY
+    };
+}
+
+// 顯示高亮框
+function showHighlight(x, y, colorType) {
+    if (!highlightCanvas || !highlightCtx) return;
+    
+    const targetColor = colorIDs[colorType];
+    if (!targetColor) return;
+    
+    // 檢測區域
+    const region = detectColorRegion(x, y, targetColor);
+    if (!region) {
+        hideHighlight();
+        return;
+    }
+    
+    currentHighlightRegion = { region, colorType };
+    drawHighlight(region, colorType);
+}
+
+// 更新高亮框位置
+function updateHighlight(x, y, colorType) {
+    if (!highlightCanvas || !highlightCtx) return;
+    
+    const targetColor = colorIDs[colorType];
+    if (!targetColor) return;
+    
+    const region = detectColorRegion(x, y, targetColor);
+    if (region) {
+        currentHighlightRegion = { region, colorType };
+        drawHighlight(region, colorType);
+    } else {
+        hideHighlight();
+    }
+}
+
+// 繪製高亮框線
+function drawHighlight(region, colorType) {
+    if (!highlightCtx) return;
+    
+    // 清除畫布
+    highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+    
+    // 設置樣式
+    const highlightColor = getHighlightColor(colorType);
+    highlightCtx.strokeStyle = highlightColor;
+    highlightCtx.lineWidth = 4;
+    highlightCtx.setLineDash([8, 4]); // 虛線效果
+    highlightCtx.lineDashOffset = 0;
+    
+    // 繪製框線
+    highlightCtx.strokeRect(region.x, region.y, region.width, region.height);
+    
+    // 添加外發光效果
+    highlightCtx.shadowBlur = 10;
+    highlightCtx.shadowColor = highlightColor;
+    highlightCtx.strokeRect(region.x, region.y, region.width, region.height);
+    highlightCtx.shadowBlur = 0;
+}
+
+// 隱藏高亮框
+function hideHighlight() {
+    if (highlightCtx && highlightCanvas) {
+        highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+    }
+    currentHighlightRegion = null;
 }
 
 // 檢測顏色類型
@@ -491,8 +661,9 @@ function switchScene(sceneName) {
         hoverThrottleTimer = null;
     }
     
-    // 隱藏提示框
+    // 隱藏提示框和高亮框
     hideTooltip();
+    hideHighlight();
     
     // 重新加載全景圖
     loadPanorama();
@@ -527,46 +698,42 @@ function loadPanorama() {
     }
     
     const imagePath = getCurrentImagePath();
-    console.log('加載全景圖:', imagePath); // 調試信息
+    console.log('加載全景圖:', imagePath);
     
-    const currentHfov = viewer.getHfov() || 90;
-    const currentPitch = viewer.getPitch() || 0;
-    const currentYaw = viewer.getYaw() || 0;
-    
-    // 加載場景
-    viewer.loadScene('equirectangular', {
-        "panorama": imagePath,
-        "hfov": currentHfov,
-        "pitch": currentPitch,
-        "yaw": currentYaw
-    });
-    
-    // 等待場景加載完成後再加載ID圖
-    viewer.once('load', () => {
-        console.log('場景加載完成，開始加載ID圖');
-        setTimeout(() => {
-            loadIDImage();
-            updateIDCanvas();
-        }, 200);
-    });
-    
-    // 處理加載錯誤
-    viewer.once('error', (error) => {
-        console.error('加載全景圖失敗:', error);
-        console.error('嘗試加載的路徑:', imagePath);
-        console.error('請確認圖片檔案是否存在於該路徑');
+    try {
+        const currentHfov = viewer.getHfov() || 90;
+        const currentPitch = viewer.getPitch() || 0;
+        const currentYaw = viewer.getYaw() || 0;
         
-        // 嘗試檢查圖片是否存在
-        const img = new Image();
-        img.onload = () => {
-            console.log('圖片檔案存在，但pannellum無法加載');
-        };
-        img.onerror = () => {
-            console.error('圖片檔案不存在或無法訪問:', imagePath);
-            alert('無法加載全景圖: ' + imagePath + '\n請檢查圖片路徑是否正確\n\n提示：在GitHub Pages上，路徑應該是相對路徑');
-        };
-        img.src = imagePath;
-    });
+        // 加載場景
+        viewer.loadScene('equirectangular', {
+            "panorama": imagePath,
+            "hfov": currentHfov,
+            "pitch": currentPitch,
+            "yaw": currentYaw
+        });
+        
+        // 移除之前的事件監聽器，避免重複綁定
+        viewer.off('load');
+        viewer.off('error');
+        
+        // 等待場景加載完成後再加載ID圖
+        viewer.once('load', () => {
+            console.log('場景加載完成，開始加載ID圖');
+            setTimeout(() => {
+                loadIDImage();
+                updateIDCanvas();
+            }, 300);
+        });
+        
+        // 處理加載錯誤
+        viewer.once('error', (error) => {
+            console.error('加載全景圖失敗:', error);
+            console.error('嘗試加載的路徑:', imagePath);
+        });
+    } catch (e) {
+        console.error('加載場景時發生錯誤:', e);
+    }
 }
 
 // 設置按鈕事件
