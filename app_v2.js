@@ -488,10 +488,9 @@ function checkIfEdgeInPanorama(x, y, width, height, pixels, targetColor) {
 }
 
 
-// 繪製白色外框高亮 - 在當前視野中掃描並繪製色塊輪廓
+// 繪製白色外框高亮 - 使用連續線條繪製色塊輪廓
 function drawSimpleHighlight(x, y, colorType) {
     if (!highlightCtx || !idImage || !idImage.complete || !viewer) {
-        console.log('高亮繪製條件未滿足');
         return;
     }
     
@@ -507,19 +506,11 @@ function drawSimpleHighlight(x, y, colorType) {
     const rect = canvas.getBoundingClientRect();
     
     // 獲取當前視角參數
-    let currentPitch = 0;
-    let currentYaw = 0;
-    let currentHfov = 90;
+    let currentPitch = viewer.getPitch() || 0;
+    let currentYaw = viewer.getYaw() || 0;
+    let currentHfov = viewer.getHfov() || 90;
     
-    try {
-        currentPitch = viewer.getPitch() || 0;
-        currentYaw = viewer.getYaw() || 0;
-        currentHfov = viewer.getHfov() || 90;
-    } catch (e) {
-        console.log('無法獲取視角參數');
-    }
-    
-    // 創建臨時畫布來讀取ID圖
+    // 創建臨時畫布讀取ID圖
     const imgWidth = idImage.width;
     const imgHeight = idImage.height;
     const tempCanvas = document.createElement('canvas');
@@ -531,20 +522,12 @@ function drawSimpleHighlight(x, y, colorType) {
     const imageData = tempCtx.getImageData(0, 0, imgWidth, imgHeight);
     const pixels = imageData.data;
     
-    // 設置白色外框樣式
-    highlightCtx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-    highlightCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    highlightCtx.lineWidth = 3;
-    highlightCtx.shadowBlur = 12;
-    highlightCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-    
-    console.log('開始繪製白色外框，顏色類型:', colorType);
-    
-    let edgeCount = 0;
+    // 計算視野範圍
     const vfov = 2 * Math.atan(Math.tan(currentHfov * Math.PI / 360) * (rect.height / rect.width)) * 180 / Math.PI;
     
-    // 掃描當前視野範圍對應的ID圖區域
-    const step = 3; // 每3個像素檢測一次
+    // 收集所有在視野內的邊緣點
+    const edgePoints = [];
+    const step = 2;
     
     for (let py = 0; py < imgHeight; py += step) {
         for (let px = 0; px < imgWidth; px += step) {
@@ -554,39 +537,73 @@ function drawSimpleHighlight(x, y, colorType) {
             const b = pixels[idx + 2];
             
             if (isColorMatch(r, g, b, targetColor)) {
-                // 檢查是否是邊緣像素
                 const isEdge = checkIfEdgeInPanorama(px, py, imgWidth, imgHeight, pixels, targetColor);
                 
                 if (isEdge) {
-                    // 將全景圖像素轉換為pitch/yaw
+                    // 轉換為pitch/yaw
                     const pixelYaw = (px / imgWidth) * 360 - 180;
                     const pixelPitch = 90 - (py / imgHeight) * 180;
                     
-                    // 計算這個像素相對於當前視角的偏移
+                    // 計算相對偏移
                     let yawDiff = pixelYaw - currentYaw;
-                    
-                    // 處理yaw的環繞（-180到180）
                     while (yawDiff > 180) yawDiff -= 360;
                     while (yawDiff < -180) yawDiff += 360;
                     
                     const pitchDiff = pixelPitch - currentPitch;
                     
-                    // 檢查是否在當前視野內
-                    if (Math.abs(yawDiff) <= currentHfov / 2 && Math.abs(pitchDiff) <= vfov / 2) {
+                    // 只處理視野內的點
+                    if (Math.abs(yawDiff) <= currentHfov / 2 + 10 && Math.abs(pitchDiff) <= vfov / 2 + 10) {
                         // 轉換為屏幕座標
-                        const screenX = (yawDiff / currentHfov) * rect.width + rect.width / 2 + rect.left;
-                        const screenY = -(pitchDiff / vfov) * rect.height + rect.height / 2 + rect.top;
+                        const screenX = (yawDiff / currentHfov) * rect.width + rect.width / 2;
+                        const screenY = -(pitchDiff / vfov) * rect.height + rect.height / 2;
                         
-                        // 繪製白色邊緣點
-                        highlightCtx.fillRect(screenX - 1.5, screenY - 1.5, 3, 3);
-                        edgeCount++;
+                        edgePoints.push({ 
+                            x: screenX + rect.left, 
+                            y: screenY + rect.top,
+                            px: px,
+                            py: py
+                        });
                     }
                 }
             }
         }
     }
     
-    console.log(`✓ 繪製了 ${edgeCount} 個白色邊緣點`);
+    if (edgePoints.length < 3) {
+        console.log('邊緣點太少，無法繪製');
+        return;
+    }
+    
+    // 按位置排序邊緣點，嘗試形成連續路徑
+    edgePoints.sort((a, b) => {
+        // 先按y排序，再按x排序
+        if (Math.abs(a.py - b.py) > 5) {
+            return a.py - b.py;
+        }
+        return a.px - b.px;
+    });
+    
+    // 設置白色線條樣式
+    highlightCtx.strokeStyle = 'rgba(255, 255, 255, 1)';
+    highlightCtx.lineWidth = 4;
+    highlightCtx.lineCap = 'round';
+    highlightCtx.lineJoin = 'round';
+    highlightCtx.shadowBlur = 15;
+    highlightCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+    
+    // 繪製連續線條
+    highlightCtx.beginPath();
+    highlightCtx.moveTo(edgePoints[0].x, edgePoints[0].y);
+    
+    for (let i = 1; i < edgePoints.length; i++) {
+        highlightCtx.lineTo(edgePoints[i].x, edgePoints[i].y);
+    }
+    
+    // 閉合路徑
+    highlightCtx.closePath();
+    highlightCtx.stroke();
+    
+    console.log(`✓ 繪製了包含 ${edgePoints.length} 個點的連續白色輪廓線`);
 }
 
 // 檢查像素是否在邊緣（全景圖版本）
