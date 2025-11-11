@@ -207,10 +207,15 @@ function updateIDCanvas() {
     }
 }
 
-// 獲取點擊位置的顏色類型
+// 獲取點擊位置的顏色類型（正確處理全景圖坐標系統）
 function getColorAtPosition(clientX, clientY) {
     if (!idCanvas || !idCtx || !idImage || !idImage.complete) {
         console.log('ID圖未就緒');
+        return null;
+    }
+    
+    if (!viewer) {
+        console.log('查看器未就緒');
         return null;
     }
     
@@ -221,26 +226,53 @@ function getColorAtPosition(clientX, clientY) {
         return null;
     }
     
-    const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const canvasX = Math.floor(x * scaleX);
-    const canvasY = Math.floor(y * scaleY);
-    
-    if (canvasX < 0 || canvasX >= idCanvas.width || canvasY < 0 || canvasY >= idCanvas.height) {
-        return null;
-    }
-    
     try {
-        const pixel = idCtx.getImageData(canvasX, canvasY, 1, 1).data;
+        // 使用Pannellum的API獲取滑鼠位置對應的pitch和yaw
+        const rect = canvas.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+        
+        // Pannellum的mouseEventToCoords方法可以將屏幕座標轉換為pitch/yaw
+        const coords = viewer.mouseEventToCoords([x, y]);
+        if (!coords) {
+            return null;
+        }
+        
+        const pitch = coords[0]; // 俯仰角
+        const yaw = coords[1];   // 偏航角
+        
+        // 將pitch和yaw轉換為全景圖上的像素位置
+        // 全景圖是等距柱狀投影（equirectangular）
+        // X = (yaw / 360) * width + width/2
+        // Y = (pitch / 180) * height + height/2
+        const imgWidth = idImage.width;
+        const imgHeight = idImage.height;
+        
+        // yaw範圍: -180到180，對應圖片的0到width
+        const pixelX = Math.floor(((yaw + 180) / 360) * imgWidth) % imgWidth;
+        // pitch範圍: -90到90，對應圖片的0到height（但是反向的）
+        const pixelY = Math.floor(((90 - pitch) / 180) * imgHeight);
+        
+        console.log(`滑鼠位置 -> pitch: ${pitch.toFixed(2)}, yaw: ${yaw.toFixed(2)} -> 像素(${pixelX}, ${pixelY})`);
+        
+        if (pixelX < 0 || pixelX >= imgWidth || pixelY < 0 || pixelY >= imgHeight) {
+            return null;
+        }
+        
+        // 從ID圖讀取顏色（使用原始圖片尺寸）
+        // 先確保idCanvas已經繪製了完整的ID圖
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = imgWidth;
+        tempCanvas.height = imgHeight;
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+        tempCtx.drawImage(idImage, 0, 0, imgWidth, imgHeight);
+        
+        const pixel = tempCtx.getImageData(pixelX, pixelY, 1, 1).data;
         const r = pixel[0], g = pixel[1], b = pixel[2];
         
         // 調試：顯示讀取到的RGB值
         if (r !== 0 || g !== 0 || b !== 0) {
-            console.log(`位置(${canvasX}, ${canvasY}) RGB: (${r}, ${g}, ${b})`);
+            console.log(`讀取到RGB: (${r}, ${g}, ${b})`);
         }
         
         // 檢測顏色類型
