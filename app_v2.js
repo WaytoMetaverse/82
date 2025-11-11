@@ -232,9 +232,19 @@ function getColorAtPosition(clientX, clientY) {
         const y = clientY - rect.top;
         
         // 獲取當前的視角參數
-        const currentPitch = viewer.getPitch();
-        const currentYaw = viewer.getYaw();
-        const currentHfov = viewer.getHfov();
+        let currentPitch = 0;
+        let currentYaw = 0;
+        let currentHfov = 90;
+        
+        try {
+            currentPitch = viewer.getPitch() || 0;
+            currentYaw = viewer.getYaw() || 0;
+            currentHfov = viewer.getHfov() || 90;
+        } catch (e) {
+            console.log('無法獲取視角參數，使用默認值');
+        }
+        
+        console.log(`當前視角 - pitch: ${currentPitch}, yaw: ${currentYaw}, hfov: ${currentHfov}`);
         
         // 將屏幕座標轉換為相對於畫布中心的標準化座標
         const centerX = rect.width / 2;
@@ -242,7 +252,7 @@ function getColorAtPosition(clientX, clientY) {
         const offsetX = x - centerX;
         const offsetY = y - centerY;
         
-        // 計算視野的垂直和水平範圍
+        // 計算視野的垂直範圍
         const vfov = 2 * Math.atan(Math.tan(currentHfov * Math.PI / 360) * (rect.height / rect.width)) * 180 / Math.PI;
         
         // 根據偏移量計算pitch和yaw的變化
@@ -252,6 +262,9 @@ function getColorAtPosition(clientX, clientY) {
         // 計算最終的pitch和yaw
         const pitch = currentPitch + pitchOffset;
         const yaw = currentYaw + yawOffset;
+        
+        console.log(`偏移量 - offsetX: ${offsetX.toFixed(2)}, offsetY: ${offsetY.toFixed(2)}`);
+        console.log(`計算出 - pitch: ${pitch.toFixed(2)}, yaw: ${yaw.toFixed(2)}`);
         
         // 將pitch和yaw轉換為全景圖上的像素位置
         // 全景圖是等距柱狀投影（equirectangular）
