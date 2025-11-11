@@ -44,6 +44,9 @@ let idImage = null;
 let idCanvas = null;
 let idCtx = null;
 let clickHandlerAttached = false;
+let lastCursorType = null; // 緩存上一次的游標類型
+let hoverThrottleTimer = null; // 節流計時器
+let lastHoverTime = 0; // 上次執行懸停檢測的時間
 
 // 初始化
 function init() {
@@ -213,22 +216,38 @@ function handlePanoramaClick(event) {
 }
 
 // 處理全景圖滑鼠懸停（改變滑鼠樣式提示可點選區域）
+// 使用節流來優化性能，避免頻繁讀取像素數據
 function handlePanoramaHover(event) {
-    const colorType = getColorTypeAtPosition(event.clientX, event.clientY);
-    const panoramaContainer = document.querySelector('#panorama');
+    const now = Date.now();
     
-    if (colorType) {
-        // 根據不同的顏色類型顯示不同的滑鼠樣式
-        if (colorType === '客餐廳' || colorType === '主臥室' || colorType === '次臥室') {
-            panoramaContainer.style.cursor = 'pointer';
-        } else if (colorType === 'sofa' || colorType === 'table') {
-            panoramaContainer.style.cursor = 'pointer';
-        } else {
-            panoramaContainer.style.cursor = 'default';
-        }
-    } else {
-        panoramaContainer.style.cursor = 'default';
+    // 節流：每100毫秒最多執行一次檢測
+    if (now - lastHoverTime < 100) {
+        return;
     }
+    
+    lastHoverTime = now;
+    
+    // 使用 requestAnimationFrame 來優化性能
+    if (hoverThrottleTimer) {
+        cancelAnimationFrame(hoverThrottleTimer);
+    }
+    
+    hoverThrottleTimer = requestAnimationFrame(() => {
+        const colorType = getColorTypeAtPosition(event.clientX, event.clientY);
+        const panoramaContainer = document.querySelector('#panorama');
+        
+        // 只有當顏色類型改變時才更新游標樣式（避免重複設置DOM操作）
+        if (colorType !== lastCursorType) {
+            if (colorType) {
+                panoramaContainer.style.cursor = 'pointer';
+            } else {
+                panoramaContainer.style.cursor = 'default';
+            }
+            lastCursorType = colorType;
+        }
+        
+        hoverThrottleTimer = null;
+    });
 }
 
 // 檢測顏色類型
@@ -308,6 +327,14 @@ function switchScene(sceneName) {
     if (!scenes[sceneName].hasFurniture) {
         currentState.sofa = 'A';
         currentState.table = 'A';
+    }
+    
+    // 重置懸停檢測緩存
+    lastCursorType = null;
+    lastHoverTime = 0;
+    if (hoverThrottleTimer) {
+        cancelAnimationFrame(hoverThrottleTimer);
+        hoverThrottleTimer = null;
     }
     
     // 重新加載全景圖
