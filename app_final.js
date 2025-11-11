@@ -121,13 +121,20 @@ function updateIDCanvas() {
     renderEquirectangularToCanvas(idImage, idCanvas, idCtx, pitch, yaw, hfov);
 }
 
-// 將等距柱狀投影全景圖渲染到canvas
+// 將等距柱狀投影全景圖渲染到canvas（修正版本）
 function renderEquirectangularToCanvas(image, canvas, ctx, pitch, yaw, hfov) {
     const width = canvas.width;
     const height = canvas.height;
     
+    console.log('渲染ID圖投影，canvas尺寸:', width, 'x', height);
+    console.log('視角參數 - pitch:', pitch, 'yaw:', yaw, 'hfov:', hfov);
+    
+    // 清空canvas
+    ctx.clearRect(0, 0, width, height);
+    
     // 計算垂直視野
     const vfov = 2 * Math.atan(Math.tan(hfov * Math.PI / 360) * (height / width)) * 180 / Math.PI;
+    console.log('計算出 vfov:', vfov);
     
     // 創建臨時canvas用於讀取源圖片
     const tempCanvas = document.createElement('canvas');
@@ -135,41 +142,55 @@ function renderEquirectangularToCanvas(image, canvas, ctx, pitch, yaw, hfov) {
     tempCanvas.height = image.height;
     const tempCtx = tempCanvas.getContext('2d');
     tempCtx.drawImage(image, 0, 0);
-    const imageData = tempCtx.getImageData(0, 0, image.width, image.height);
+    const srcData = tempCtx.getImageData(0, 0, image.width, image.height);
     
     // 創建輸出圖像數據
     const outputData = ctx.createImageData(width, height);
     
+    let renderedPixels = 0;
+    let coloredPixels = 0;
+    
     // 渲染每個像素
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            // 將屏幕座標轉換為pitch/yaw
-            const screenPitch = pitch - (y / height - 0.5) * vfov;
-            const screenYaw = yaw + (x / width - 0.5) * hfov;
+            // 將屏幕座標轉換為相對於中心的偏移量（-0.5 到 0.5）
+            const offsetX = (x / width) - 0.5;
+            const offsetY = (y / height) - 0.5;
+            
+            // 計算這個像素對應的pitch和yaw
+            const pixelPitch = pitch - offsetY * vfov;
+            const pixelYaw = yaw + offsetX * hfov;
             
             // 將pitch/yaw轉換為全景圖像素座標
-            let normalizedYaw = screenYaw;
+            let normalizedYaw = pixelYaw;
             while (normalizedYaw > 180) normalizedYaw -= 360;
             while (normalizedYaw < -180) normalizedYaw += 360;
             
+            // 等距柱狀投影公式
             const srcX = Math.floor(((normalizedYaw + 180) / 360) * image.width);
-            const srcY = Math.floor(((90 - screenPitch) / 180) * image.height);
+            const srcY = Math.floor(((90 - pixelPitch) / 180) * image.height);
             
             // 邊界檢查
             if (srcX >= 0 && srcX < image.width && srcY >= 0 && srcY < image.height) {
                 const srcIdx = (srcY * image.width + srcX) * 4;
                 const dstIdx = (y * width + x) * 4;
                 
-                outputData.data[dstIdx] = imageData.data[srcIdx];
-                outputData.data[dstIdx + 1] = imageData.data[srcIdx + 1];
-                outputData.data[dstIdx + 2] = imageData.data[srcIdx + 2];
+                outputData.data[dstIdx] = srcData.data[srcIdx];
+                outputData.data[dstIdx + 1] = srcData.data[srcIdx + 1];
+                outputData.data[dstIdx + 2] = srcData.data[srcIdx + 2];
                 outputData.data[dstIdx + 3] = 255;
+                
+                renderedPixels++;
+                
+                if (srcData.data[srcIdx] !== 0 || srcData.data[srcIdx + 1] !== 0 || srcData.data[srcIdx + 2] !== 0) {
+                    coloredPixels++;
+                }
             }
         }
     }
     
     ctx.putImageData(outputData, 0, 0);
-    console.log('✓ ID canvas 渲染完成');
+    console.log(`✓ ID canvas 渲染完成 - 渲染像素: ${renderedPixels}, 有色像素: ${coloredPixels}`);
 }
 
 // 設置事件
@@ -283,9 +304,11 @@ function drawHighlight(colorType) {
     
     const edgePoints = [];
     
-    // 掃描邊緣
-    for (let y = 0; y < h; y += 2) {
-        for (let x = 0; x < w; x += 2) {
+    // 掃描邊緣 - 使用更大的步長，只提取輪廓
+    const step = 5; // 每5個像素檢測一次，形成清晰的外框線
+    
+    for (let y = 0; y < h; y += step) {
+        for (let x = 0; x < w; x += step) {
             const idx = (y * w + x) * 4;
             const r = pixels[idx];
             const g = pixels[idx + 1];
@@ -295,34 +318,44 @@ function drawHighlight(colorType) {
                 Math.abs(g - targetColor.g) <= 15 && 
                 Math.abs(b - targetColor.b) <= 15) {
                 
-                // 檢查是否是邊緣
+                // 檢查是否是邊緣（周圍有非目標顏色的像素）
                 if (isEdge(x, y, w, h, pixels, targetColor)) {
-                    edgePoints.push({ x: x + rect.left, y: y + rect.top });
+                    edgePoints.push({ x: x + rect.left, y: y + rect.top, px: x, py: y });
                 }
             }
         }
     }
     
-    if (edgePoints.length > 0) {
+    if (edgePoints.length > 10) {
+        // 按位置排序，形成連續路徑
+        edgePoints.sort((a, b) => {
+            const angleA = Math.atan2(a.py - h/2, a.px - w/2);
+            const angleB = Math.atan2(b.py - h/2, b.px - w/2);
+            return angleA - angleB;
+        });
+        
         // 繪製白色輪廓線
         highlightCtx.strokeStyle = 'rgba(255, 255, 255, 1)';
-        highlightCtx.lineWidth = 4;
+        highlightCtx.lineWidth = 3;
         highlightCtx.lineCap = 'round';
         highlightCtx.lineJoin = 'round';
-        highlightCtx.shadowBlur = 15;
+        highlightCtx.shadowBlur = 12;
         highlightCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        highlightCtx.setLineDash([]); // 實線
         
         highlightCtx.beginPath();
-        edgePoints.forEach((p, i) => {
-            if (i === 0) highlightCtx.moveTo(p.x, p.y);
-            else highlightCtx.lineTo(p.x, p.y);
-        });
+        highlightCtx.moveTo(edgePoints[0].x, edgePoints[0].y);
+        
+        for (let i = 1; i < edgePoints.length; i++) {
+            highlightCtx.lineTo(edgePoints[i].x, edgePoints[i].y);
+        }
+        
         highlightCtx.closePath();
         highlightCtx.stroke();
         
-        console.log(`✓ 繪製了 ${edgePoints.length} 個點的白色輪廓`);
+        console.log(`✓ 繪製了包含 ${edgePoints.length} 個點的白色外框線`);
     } else {
-        console.log('未找到邊緣點');
+        console.log('邊緣點太少:', edgePoints.length);
     }
 }
 
