@@ -164,23 +164,53 @@ function initHighlightCanvas() {
 function setupMouseEvents() {
     const panoramaDiv = document.getElementById('panorama');
     let hoverTimeout = null;
+    let lastColorType = null;
     
     panoramaDiv.addEventListener('mousemove', (e) => {
-        if (hoverTimeout) clearTimeout(hoverTimeout);
-        hoverTimeout = setTimeout(() => handleHover(e), 50);
+        if (hoverTimeout) return;
+        
+        hoverTimeout = setTimeout(() => {
+            // 先同步ID查看器
+            syncIDViewer();
+            
+            setTimeout(() => {
+                const colorType = getColorAtPosition(e.clientX, e.clientY);
+                
+                if (colorType !== lastColorType) {
+                    if (colorType) {
+                        panoramaDiv.style.cursor = 'pointer';
+                        console.log('✓ 檢測到:', colorType);
+                        drawHighlight(colorType);
+                    } else {
+                        panoramaDiv.style.cursor = 'default';
+                        clearHighlight();
+                    }
+                    lastColorType = colorType;
+                }
+                
+                hoverTimeout = null;
+            }, 30);
+        }, 80);
     });
     
     panoramaDiv.addEventListener('mouseleave', () => {
         clearHighlight();
         panoramaDiv.style.cursor = 'default';
+        lastColorType = null;
     });
     
-    panoramaDiv.addEventListener('click', handleClick);
+    panoramaDiv.addEventListener('click', (e) => {
+        syncIDViewer();
+        setTimeout(() => {
+            handleClick(e);
+        }, 30);
+    });
     
-    // 監聽視角變化，同步ID查看器
+    // 監聽視角變化
     if (viewer) {
-        viewer.on('mouseup', syncIDViewer);
-        viewer.on('touchend', syncIDViewer);
+        viewer.on('mouseup', () => {
+            setTimeout(syncIDViewer, 50);
+        });
     }
 }
 
@@ -215,42 +245,37 @@ function getColorAtPosition(clientX, clientY) {
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     
-    // 先同步ID查看器
-    syncIDViewer();
-    
-    // 等待同步完成後讀取
-    setTimeout(() => {
-        try {
-            const ctx = idCanvas.getContext('2d');
-            const scaleX = idCanvas.width / rect.width;
-            const scaleY = idCanvas.height / rect.height;
-            const px = Math.floor(x * scaleX);
-            const py = Math.floor(y * scaleY);
+    try {
+        const ctx = idCanvas.getContext('2d');
+        const scaleX = idCanvas.width / rect.width;
+        const scaleY = idCanvas.height / rect.height;
+        const px = Math.floor(x * scaleX);
+        const py = Math.floor(y * scaleY);
+        
+        if (px >= 0 && px < idCanvas.width && py >= 0 && py < idCanvas.height) {
+            const pixel = ctx.getImageData(px, py, 1, 1).data;
+            const r = pixel[0], g = pixel[1], b = pixel[2];
             
-            if (px >= 0 && px < idCanvas.width && py >= 0 && py < idCanvas.height) {
-                const pixel = ctx.getImageData(px, py, 1, 1).data;
-                const r = pixel[0], g = pixel[1], b = pixel[2];
-                
+            if (r !== 0 || g !== 0 || b !== 0) {
                 console.log(`讀取RGB: (${r}, ${g}, ${b})`);
+            }
+            
+            // 檢測顏色
+            for (const [key, color] of Object.entries(colorIDs)) {
+                if (key === 'sofa' || key === 'table') {
+                    if (currentState.scene !== '客餐廳') continue;
+                }
                 
-                // 檢測顏色
-                for (const [key, color] of Object.entries(colorIDs)) {
-                    if (key === 'sofa' || key === 'table') {
-                        if (currentState.scene !== '客餐廳') continue;
-                    }
-                    
-                    if (Math.abs(r - color.r) <= 10 && 
-                        Math.abs(g - color.g) <= 10 && 
-                        Math.abs(b - color.b) <= 10) {
-                        console.log(`✓ 檢測到: ${key}`);
-                        return key;
-                    }
+                if (Math.abs(r - color.r) <= 15 && 
+                    Math.abs(g - color.g) <= 15 && 
+                    Math.abs(b - color.b) <= 15) {
+                    return key;
                 }
             }
-        } catch (e) {
-            console.error('讀取失敗:', e);
         }
-    }, 50);
+    } catch (e) {
+        console.error('讀取失敗:', e);
+    }
     
     return null;
 }
