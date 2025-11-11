@@ -27,7 +27,7 @@ let currentState = {
 
 // 顏色ID定義（RGB值） - 與ID圖完全對應
 const colorIDs = {
-    '客餐廳': { r: 0, g: 255, b: 255, tolerance: 20 }, // 青色
+    '客餐廳': { r: 255, g: 0, b: 255, tolerance: 20 }, // 粉紅色 (實際是 Cyan，但使用者稱為粉紅色)
     '主臥室': { r: 255, g: 255, b: 0, tolerance: 20 }, // 黃色
     '次臥室': { r: 0, g: 0, b: 255, tolerance: 20 }, // 藍色
     sofa: { r: 0, g: 255, b: 0, tolerance: 20 }, // 綠色
@@ -488,45 +488,115 @@ function checkIfEdgeInPanorama(x, y, width, height, pixels, targetColor) {
 }
 
 
-// 繪製簡單高亮（測試用 - 在鼠標位置繪製圓圈）
+// 繪製白色外框高亮 - 掃描ID圖並在色塊外圍繪製白色輪廓
 function drawSimpleHighlight(x, y, colorType) {
-    if (!highlightCtx) {
-        console.log('highlightCtx 不存在');
+    if (!highlightCtx || !idImage || !idImage.complete || !viewer) {
+        console.log('高亮繪製條件未滿足');
         return;
     }
     
     clearHighlight();
     
-    const colorMap = {
-        '客餐廳': 'rgba(0, 255, 255, 0.9)', // 青色
-        '主臥室': 'rgba(255, 255, 0, 0.9)', // 黃色
-        '次臥室': 'rgba(0, 0, 255, 0.9)', // 藍色
-        'sofa': 'rgba(0, 255, 0, 0.9)', // 綠色
-        'table': 'rgba(255, 0, 0, 0.9)' // 紅色
-    };
+    const targetColor = colorIDs[colorType];
+    if (!targetColor) return;
     
-    const highlightColor = colorMap[colorType];
-    console.log('繪製高亮圓圈，位置:', x, y, '顏色:', colorType);
+    const panoramaDiv = document.getElementById('panorama');
+    const canvas = panoramaDiv.querySelector('canvas');
+    if (!canvas) return;
     
-    // 繪製一個大圓圈作為高亮指示
-    highlightCtx.beginPath();
-    highlightCtx.arc(x, y, 40, 0, Math.PI * 2);
-    highlightCtx.strokeStyle = highlightColor;
-    highlightCtx.lineWidth = 4;
-    highlightCtx.setLineDash([10, 5]);
-    highlightCtx.shadowBlur = 15;
-    highlightCtx.shadowColor = highlightColor;
-    highlightCtx.stroke();
+    const rect = canvas.getBoundingClientRect();
     
-    // 內圈
-    highlightCtx.beginPath();
-    highlightCtx.arc(x, y, 30, 0, Math.PI * 2);
-    highlightCtx.strokeStyle = highlightColor;
-    highlightCtx.lineWidth = 2;
-    highlightCtx.setLineDash([5, 3]);
-    highlightCtx.stroke();
+    // 創建臨時畫布來讀取ID圖
+    const tempCanvas = document.createElement('canvas');
+    const imgWidth = idImage.width;
+    const imgHeight = idImage.height;
+    tempCanvas.width = imgWidth;
+    tempCanvas.height = imgHeight;
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    tempCtx.drawImage(idImage, 0, 0, imgWidth, imgHeight);
     
-    console.log('✓ 高亮繪製完成');
+    const imageData = tempCtx.getImageData(0, 0, imgWidth, imgHeight);
+    const pixels = imageData.data;
+    
+    // 使用白色外框
+    highlightCtx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    highlightCtx.lineWidth = 3;
+    highlightCtx.setLineDash([]);
+    highlightCtx.shadowBlur = 10;
+    highlightCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+    
+    console.log('開始繪製白色外框，顏色類型:', colorType);
+    
+    // 掃描ID圖，找出所有匹配顏色的邊緣像素
+    const step = 4; // 每4個像素檢測一次
+    let edgeCount = 0;
+    
+    for (let py = 0; py < imgHeight; py += step) {
+        for (let px = 0; px < imgWidth; px += step) {
+            const idx = (py * imgWidth + px) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            
+            if (isColorMatch(r, g, b, targetColor)) {
+                // 檢查是否是邊緣像素
+                const isEdge = checkIfEdgeInPanorama(px, py, imgWidth, imgHeight, pixels, targetColor);
+                
+                if (isEdge) {
+                    // 將全景圖像素坐標轉換為pitch/yaw
+                    const yaw = (px / imgWidth) * 360 - 180;
+                    const pitch = 90 - (py / imgHeight) * 180;
+                    
+                    // 使用Pannellum的API將pitch/yaw轉換為屏幕座標
+                    try {
+                        const screenCoords = viewer.pitchYawToScreen(pitch, yaw);
+                        if (screenCoords && screenCoords[0] !== null && screenCoords[1] !== null) {
+                            const screenX = screenCoords[0] + rect.left;
+                            const screenY = screenCoords[1] + rect.top;
+                            
+                            // 繪製白色邊緣點
+                            highlightCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                            highlightCtx.fillRect(screenX - 1.5, screenY - 1.5, 3, 3);
+                            edgeCount++;
+                        }
+                    } catch (e) {
+                        // 該點不在當前視野內，跳過
+                    }
+                }
+            }
+        }
+    }
+    
+    console.log(`✓ 繪製了 ${edgeCount} 個白色邊緣點`);
+}
+
+// 檢查像素是否在邊緣（全景圖版本）
+function checkIfEdgeInPanorama(x, y, width, height, pixels, targetColor) {
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    
+    for (const [dx, dy] of directions) {
+        let nx = x + dx;
+        let ny = y + dy;
+        
+        // 處理水平環繞
+        if (nx < 0) nx = width - 1;
+        if (nx >= width) nx = 0;
+        
+        if (ny < 0 || ny >= height) {
+            return true;
+        }
+        
+        const idx = (ny * width + nx) * 4;
+        const r = pixels[idx];
+        const g = pixels[idx + 1];
+        const b = pixels[idx + 2];
+        
+        if (!isColorMatch(r, g, b, targetColor)) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 // 清除高亮
