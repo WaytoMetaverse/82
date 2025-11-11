@@ -15,6 +15,63 @@ body {
     height: 100vh;
 }
 
+/* 懸停提示框 */
+.hover-tooltip {
+    position: fixed;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 10000;
+    opacity: 0;
+    transform: translate(-50%, -100%) translateY(-10px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+}
+
+.hover-tooltip.show {
+    opacity: 1;
+    transform: translate(-50%, -100%) translateY(-5px);
+}
+
+.hover-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: rgba(0, 0, 0, 0.85);
+}
+
+.hover-tooltip.scene {
+    background: rgba(74, 144, 226, 0.9);
+}
+
+.hover-tooltip.scene::after {
+    border-top-color: rgba(74, 144, 226, 0.9);
+}
+
+.hover-tooltip.sofa {
+    background: rgba(76, 175, 80, 0.9);
+}
+
+.hover-tooltip.sofa::after {
+    border-top-color: rgba(76, 175, 80, 0.9);
+}
+
+.hover-tooltip.table {
+    background: rgba(244, 67, 54, 0.9);
+}
+
+.hover-tooltip.table::after {
+    border-top-color: rgba(244, 67, 54, 0.9);
+}
+
 #control-panel {
     position: fixed;
     top: 20px;

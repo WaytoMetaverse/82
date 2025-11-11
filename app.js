@@ -47,6 +47,7 @@ let clickHandlerAttached = false;
 let lastCursorType = null; // 緩存上一次的游標類型
 let hoverThrottleTimer = null; // 節流計時器
 let lastHoverTime = 0; // 上次執行懸停檢測的時間
+let hoverTooltip = null; // 懸停提示框元素
 
 // 初始化
 function init() {
@@ -75,6 +76,7 @@ function init() {
             const panoramaContainer = document.querySelector('#panorama');
             panoramaContainer.addEventListener('click', handlePanoramaClick);
             panoramaContainer.addEventListener('mousemove', handlePanoramaHover);
+            panoramaContainer.addEventListener('mouseleave', hideTooltip);
             clickHandlerAttached = true;
         }
         
@@ -87,6 +89,9 @@ function init() {
     // 設置按鈕事件
     setupButtons();
     
+    // 初始化懸停提示框
+    initHoverTooltip();
+    
     // 更新UI
     updateUI();
 }
@@ -98,6 +103,17 @@ function initIDCanvas() {
     
     // 加載ID圖
     loadIDImage();
+}
+
+// 初始化懸停提示框
+function initHoverTooltip() {
+    hoverTooltip = document.getElementById('hover-tooltip');
+    if (!hoverTooltip) {
+        hoverTooltip = document.createElement('div');
+        hoverTooltip.id = 'hover-tooltip';
+        hoverTooltip.className = 'hover-tooltip';
+        document.body.appendChild(hoverTooltip);
+    }
 }
 
 // 加載ID圖
@@ -215,6 +231,18 @@ function handlePanoramaClick(event) {
     }
 }
 
+// 獲取顏色類型對應的提示文字
+function getTooltipText(colorType) {
+    const tooltipMap = {
+        '客餐廳': '🩷 點擊切換到客餐廳',
+        '主臥室': '🟡 點擊切換到主臥室',
+        '次臥室': '🔵 點擊切換到次臥室',
+        'sofa': '🟢 點擊替換沙發',
+        'table': '🔴 點擊替換茶几'
+    };
+    return tooltipMap[colorType] || '';
+}
+
 // 處理全景圖滑鼠懸停（改變滑鼠樣式提示可點選區域）
 // 使用節流來優化性能，避免頻繁讀取像素數據
 function handlePanoramaHover(event) {
@@ -236,18 +264,90 @@ function handlePanoramaHover(event) {
         const colorType = getColorTypeAtPosition(event.clientX, event.clientY);
         const panoramaContainer = document.querySelector('#panorama');
         
-        // 只有當顏色類型改變時才更新游標樣式（避免重複設置DOM操作）
+        // 更新游標樣式和提示框
         if (colorType !== lastCursorType) {
             if (colorType) {
                 panoramaContainer.style.cursor = 'pointer';
+                showTooltip(event.clientX, event.clientY, colorType);
             } else {
                 panoramaContainer.style.cursor = 'default';
+                hideTooltip();
             }
             lastCursorType = colorType;
+        } else if (colorType) {
+            // 如果顏色類型沒變但仍在可點選區域，更新提示框位置
+            updateTooltipPosition(event.clientX, event.clientY);
         }
         
         hoverThrottleTimer = null;
     });
+}
+
+// 顯示懸停提示框
+function showTooltip(x, y, colorType) {
+    if (!hoverTooltip) {
+        initHoverTooltip();
+    }
+    
+    const tooltipText = getTooltipText(colorType);
+    hoverTooltip.textContent = tooltipText;
+    
+    // 設置樣式類別
+    hoverTooltip.className = 'hover-tooltip';
+    if (colorType === '客餐廳' || colorType === '主臥室' || colorType === '次臥室') {
+        hoverTooltip.classList.add('scene');
+    } else if (colorType === 'sofa') {
+        hoverTooltip.classList.add('sofa');
+    } else if (colorType === 'table') {
+        hoverTooltip.classList.add('table');
+    }
+    
+    // 更新位置
+    updateTooltipPosition(x, y);
+    
+    // 顯示提示框
+    hoverTooltip.classList.add('show');
+}
+
+// 更新提示框位置
+function updateTooltipPosition(x, y) {
+    if (!hoverTooltip) return;
+    
+    // 先設置基本位置（在滑鼠上方）
+    hoverTooltip.style.left = x + 'px';
+    hoverTooltip.style.top = y + 'px';
+    hoverTooltip.style.transform = 'translate(-50%, -100%) translateY(-5px)';
+    
+    // 強制重排以獲取實際尺寸
+    void hoverTooltip.offsetWidth;
+    
+    // 確保提示框不會超出視窗邊界
+    const rect = hoverTooltip.getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const padding = 10;
+    
+    // 水平邊界檢查
+    if (rect.right > windowWidth - padding) {
+        hoverTooltip.style.left = (windowWidth - padding) + 'px';
+        hoverTooltip.style.transform = 'translate(-100%, -100%) translateY(-5px)';
+    } else if (rect.left < padding) {
+        hoverTooltip.style.left = padding + 'px';
+        hoverTooltip.style.transform = 'translate(0, -100%) translateY(-5px)';
+    }
+    
+    // 垂直邊界檢查（如果提示框超出頂部，顯示在滑鼠下方）
+    if (rect.top < padding) {
+        hoverTooltip.style.top = (y + 30) + 'px';
+        hoverTooltip.style.transform = hoverTooltip.style.transform.replace('translateY(-5px)', 'translateY(5px)');
+    }
+}
+
+// 隱藏懸停提示框
+function hideTooltip() {
+    if (hoverTooltip) {
+        hoverTooltip.classList.remove('show');
+    }
 }
 
 // 檢測顏色類型
@@ -336,6 +436,9 @@ function switchScene(sceneName) {
         cancelAnimationFrame(hoverThrottleTimer);
         hoverThrottleTimer = null;
     }
+    
+    // 隱藏提示框
+    hideTooltip();
     
     // 重新加載全景圖
     loadPanorama();
