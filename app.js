@@ -26,17 +26,19 @@ let currentState = {
 };
 
 // 顏色ID定義（RGB值）
+// 注意：這些顏色值必須與ID圖中的顏色完全對應
+// 如果檢測不準確，請檢查ID圖中的實際RGB值並調整此處的定義
 const colorIDs = {
-    // 粉色 - 客餐廳
-    '客餐廳': { r: 255, g: 192, b: 203, tolerance: 30 },
-    // 黃色 - 主臥室
-    '主臥室': { r: 255, g: 255, b: 0, tolerance: 30 },
-    // 藍色 - 次臥室
-    '次臥室': { r: 0, g: 0, b: 255, tolerance: 30 },
-    // 綠色 - 沙發替換
-    sofa: { r: 0, g: 255, b: 0, tolerance: 30 },
-    // 紅色 - 茶几替換
-    table: { r: 255, g: 0, b: 0, tolerance: 30 }
+    // 粉色 - 客餐廳 (RGB: 255, 192, 203)
+    '客餐廳': { r: 255, g: 192, b: 203, tolerance: 20 },
+    // 黃色 - 主臥室 (RGB: 255, 255, 0)
+    '主臥室': { r: 255, g: 255, b: 0, tolerance: 20 },
+    // 藍色 - 次臥室 (RGB: 0, 0, 255)
+    '次臥室': { r: 0, g: 0, b: 255, tolerance: 20 },
+    // 綠色 - 沙發替換 (RGB: 0, 255, 0)
+    sofa: { r: 0, g: 255, b: 0, tolerance: 20 },
+    // 紅色 - 茶几替換 (RGB: 255, 0, 0)
+    table: { r: 255, g: 0, b: 0, tolerance: 20 }
 };
 
 let viewer = null;
@@ -207,10 +209,14 @@ function getColorTypeAtPosition(clientX, clientY) {
     
     try {
         // 從隱藏的ID圖中讀取對應位置的顏色（ID圖用於區分可點選物件，用戶看不到）
+        // ID圖的顏色與場景可點選物件完全對應
         const pixel = idCtx.getImageData(canvasX, canvasY, 1, 1).data;
         const r = pixel[0];
         const g = pixel[1];
         const b = pixel[2];
+        
+        // 調試模式：在控制台顯示RGB值（開發時可用，正式版本可移除）
+        // console.log(`位置 (${canvasX}, ${canvasY}): RGB(${r}, ${g}, ${b})`);
         
         // 檢測顏色類型
         return detectColorType(r, g, b);
@@ -351,8 +357,11 @@ function hideTooltip() {
 }
 
 // 檢測顏色類型
+// ID圖的顏色與場景可點選物件完全對應，此函數確保精確匹配
 function detectColorType(r, g, b) {
-    // 檢測場景顏色（優先檢測，避免與家具顏色衝突）
+    // 優先檢測場景顏色（粉色、黃色、藍色）
+    // 這些顏色在全景圖中用於標記場景切換區域
+    
     // 粉色 - 客餐廳
     if (isColorMatch(r, g, b, colorIDs['客餐廳'])) {
         return '客餐廳';
@@ -368,28 +377,35 @@ function detectColorType(r, g, b) {
         return '次臥室';
     }
     
-    // 檢測綠色（沙發替換）- 只在客餐廳有效
+    // 檢測家具顏色（僅在客餐廳場景中有效）
+    // 這些顏色在ID圖中標記可替換的家具物件
+    
+    // 綠色 - 沙發替換（僅在客餐廳有效）
     if (currentState.scene === '客餐廳' && isColorMatch(r, g, b, colorIDs.sofa)) {
         return 'sofa';
     }
     
-    // 檢測紅色（茶几替換）- 只在客餐廳有效
+    // 紅色 - 茶几替換（僅在客餐廳有效）
     if (currentState.scene === '客餐廳' && isColorMatch(r, g, b, colorIDs.table)) {
         return 'table';
     }
     
+    // 如果沒有匹配到任何顏色，返回null（表示不可點選）
     return null;
 }
 
 // 檢查顏色是否匹配
+// 使用歐幾里得距離來更準確地檢測顏色相似度
 function isColorMatch(r, g, b, targetColor) {
-    const dr = Math.abs(r - targetColor.r);
-    const dg = Math.abs(g - targetColor.g);
-    const db = Math.abs(b - targetColor.b);
+    // 計算RGB空間中的歐幾里得距離
+    const dr = r - targetColor.r;
+    const dg = g - targetColor.g;
+    const db = b - targetColor.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
     
-    return dr <= targetColor.tolerance && 
-           dg <= targetColor.tolerance && 
-           db <= targetColor.tolerance;
+    // 使用容差值來判斷是否匹配（容差值對應RGB空間中的距離）
+    // tolerance: 20 對應約 34.6 的RGB距離
+    return distance <= (targetColor.tolerance * Math.sqrt(3));
 }
 
 // 處理顏色點擊
