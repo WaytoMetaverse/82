@@ -84,17 +84,20 @@ function init() {
     viewer.on('load', function() {
         console.log('全景圖加載成功');
         loadIDImage();
+        
+        // 在全景圖加載完成後才設置畫布事件
+        setTimeout(() => {
+            setupCanvasEvents();
+            console.log('✓ 事件已綁定');
+        }, 500);
     });
     
     viewer.on('error', function(err) {
         console.error('全景圖加載失敗:', err);
     });
     
-    // 設置按鈕事件
+    // 設置按鈕事件（這個可以先設置）
     setupButtons();
-    
-    // 設置畫布點擊和懸停事件
-    setupCanvasEvents();
     
     // 更新UI
     updateUI();
@@ -129,11 +132,30 @@ function initCanvas() {
 function setupCanvasEvents() {
     const panoramaDiv = document.getElementById('panorama');
     
-    panoramaDiv.addEventListener('click', handleClick);
-    panoramaDiv.addEventListener('mousemove', throttle(handleHover, 100));
+    // 移除舊的事件監聽器（如果有）
+    const oldClick = panoramaDiv.onclick;
+    panoramaDiv.onclick = null;
+    
+    // 添加新的事件監聽器
+    panoramaDiv.addEventListener('click', handleClick, { once: false });
+    panoramaDiv.addEventListener('mousemove', handleHoverThrottled, { once: false });
     panoramaDiv.addEventListener('mouseleave', () => {
         clearHighlight();
-    });
+        document.getElementById('panorama').style.cursor = 'default';
+    }, { once: false });
+    
+    console.log('事件監聽器設置完成');
+}
+
+// 節流版本的懸停處理
+let hoverThrottleTimeout = null;
+function handleHoverThrottled(event) {
+    if (hoverThrottleTimeout) return;
+    
+    hoverThrottleTimeout = setTimeout(() => {
+        handleHover(event);
+        hoverThrottleTimeout = null;
+    }, 50); // 50ms節流
 }
 
 // 節流函數
@@ -188,12 +210,16 @@ function updateIDCanvas() {
 // 獲取點擊位置的顏色類型
 function getColorAtPosition(clientX, clientY) {
     if (!idCanvas || !idCtx || !idImage || !idImage.complete) {
+        console.log('ID圖未就緒');
         return null;
     }
     
     const panoramaDiv = document.getElementById('panorama');
     const canvas = panoramaDiv.querySelector('canvas');
-    if (!canvas) return null;
+    if (!canvas) {
+        console.log('找不到pannellum畫布');
+        return null;
+    }
     
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
@@ -212,6 +238,11 @@ function getColorAtPosition(clientX, clientY) {
         const pixel = idCtx.getImageData(canvasX, canvasY, 1, 1).data;
         const r = pixel[0], g = pixel[1], b = pixel[2];
         
+        // 調試：顯示讀取到的RGB值
+        if (r !== 0 || g !== 0 || b !== 0) {
+            console.log(`位置(${canvasX}, ${canvasY}) RGB: (${r}, ${g}, ${b})`);
+        }
+        
         // 檢測顏色類型
         for (const [key, color] of Object.entries(colorIDs)) {
             if (key === 'sofa' || key === 'table') {
@@ -219,13 +250,14 @@ function getColorAtPosition(clientX, clientY) {
             }
             
             if (isColorMatch(r, g, b, color)) {
-                console.log(`檢測到顏色: ${key}, RGB(${r}, ${g}, ${b})`);
+                console.log(`✓ 檢測到顏色: ${key}`);
                 return key;
             }
         }
         
         return null;
     } catch (e) {
+        console.error('讀取像素失敗:', e);
         return null;
     }
 }
@@ -263,8 +295,11 @@ function handleClick(event) {
 function handleHover(event) {
     const colorType = getColorAtPosition(event.clientX, event.clientY);
     
+    console.log('懸停檢測:', colorType); // 調試信息
+    
     if (colorType) {
         document.getElementById('panorama').style.cursor = 'pointer';
+        console.log('顯示高亮:', colorType);
         drawHighlight(event.clientX, event.clientY, colorType);
     } else {
         document.getElementById('panorama').style.cursor = 'default';
@@ -411,12 +446,13 @@ function cycleTable() {
     updateUI();
 }
 
-// 重新加載全景圖（簡化版本）
+// 重新加載全景圖
 function reloadPanorama() {
     const newPath = getCurrentImagePath();
-    console.log('重新加載全景圖:', newPath);
+    console.log('==== 重新加載全景圖 ====');
+    console.log('新路徑:', newPath);
     
-    // 直接銷毀舊的查看器並創建新的
+    // 銷毀舊的查看器
     if (viewer) {
         try {
             viewer.destroy();
@@ -426,8 +462,13 @@ function reloadPanorama() {
         }
     }
     
+    // 清除高亮
+    clearHighlight();
+    
     // 創建新的查看器
     setTimeout(() => {
+        console.log('創建新查看器...');
+        
         viewer = pannellum.viewer('panorama', {
             "type": "equirectangular",
             "panorama": newPath,
@@ -439,12 +480,20 @@ function reloadPanorama() {
         });
         
         viewer.on('load', () => {
-            console.log('新全景圖加載成功');
+            console.log('✓ 新全景圖加載成功');
+            
+            // 加載對應的ID圖
             loadIDImage();
+            
+            // 重新綁定事件（很重要！）
+            setTimeout(() => {
+                setupCanvasEvents();
+                console.log('✓ 事件重新綁定完成');
+            }, 300);
         });
         
         viewer.on('error', (err) => {
-            console.error('加載失敗:', err, newPath);
+            console.error('✗ 加載失敗:', err, newPath);
         });
     }, 100);
 }
