@@ -27,10 +27,9 @@ let currentState = {
 
 // 顏色ID定義（RGB值）
 // 注意：這些顏色值必須與ID圖中的顏色完全對應
-// 如果檢測不準確，請檢查ID圖中的實際RGB值並調整此處的定義
 const colorIDs = {
-    // 粉色 - 客餐廳 (RGB: 255, 192, 203)
-    '客餐廳': { r: 255, g: 192, b: 203, tolerance: 20 },
+    // 青色（用戶稱為粉色）- 客餐廳 (RGB: 0, 255, 255)
+    '客餐廳': { r: 0, g: 255, b: 255, tolerance: 20 },
     // 黃色 - 主臥室 (RGB: 255, 255, 0)
     '主臥室': { r: 255, g: 255, b: 0, tolerance: 20 },
     // 藍色 - 次臥室 (RGB: 0, 0, 255)
@@ -70,22 +69,35 @@ function init() {
     
     // 等待查看器完全加載後設置事件
     viewer.on('load', () => {
+        console.log('全景圖查看器初始化完成');
+        
         // 初始化ID圖畫布
         initIDCanvas();
         
         // 設置點擊事件和滑鼠移動事件 - 直接在全景圖容器上監聽（只綁定一次）
         if (!clickHandlerAttached) {
             const panoramaContainer = document.querySelector('#panorama');
-            panoramaContainer.addEventListener('click', handlePanoramaClick);
-            panoramaContainer.addEventListener('mousemove', handlePanoramaHover);
-            panoramaContainer.addEventListener('mouseleave', hideTooltip);
-            clickHandlerAttached = true;
+            if (panoramaContainer) {
+                panoramaContainer.addEventListener('click', handlePanoramaClick);
+                panoramaContainer.addEventListener('mousemove', handlePanoramaHover);
+                panoramaContainer.addEventListener('mouseleave', hideTooltip);
+                console.log('事件監聽器已綁定');
+                clickHandlerAttached = true;
+            } else {
+                console.error('找不到全景圖容器');
+            }
         }
         
         // 更新ID畫布以匹配當前場景
         setTimeout(() => {
+            loadIDImage();
             updateIDCanvas();
         }, 300);
+    });
+    
+    // 處理初始化錯誤
+    viewer.on('error', (error) => {
+        console.error('全景圖查看器初始化失敗:', error);
     });
     
     // 設置按鈕事件
@@ -120,15 +132,20 @@ function initHoverTooltip() {
 
 // 加載ID圖
 function loadIDImage() {
+    const idImagePath = getCurrentIDImagePath();
+    console.log('加載ID圖:', idImagePath); // 調試信息
+    
     idImage = new Image();
     idImage.crossOrigin = 'anonymous';
     idImage.onload = function() {
+        console.log('ID圖加載成功');
         updateIDCanvas();
     };
     idImage.onerror = function() {
-        console.error('無法加載ID圖:', getCurrentIDImagePath());
+        console.error('無法加載ID圖:', idImagePath);
+        // 不顯示alert，因為ID圖失敗不影響主要功能
     };
-    idImage.src = getCurrentIDImagePath();
+    idImage.src = idImagePath;
 }
 
 // 更新ID畫布
@@ -240,7 +257,7 @@ function handlePanoramaClick(event) {
 // 獲取顏色類型對應的提示文字
 function getTooltipText(colorType) {
     const tooltipMap = {
-        '客餐廳': '🩷 點擊切換到客餐廳',
+        '客餐廳': '🔵 點擊切換到客餐廳',
         '主臥室': '🟡 點擊切換到主臥室',
         '次臥室': '🔵 點擊切換到次臥室',
         'sofa': '🟢 點擊替換沙發',
@@ -252,6 +269,11 @@ function getTooltipText(colorType) {
 // 處理全景圖滑鼠懸停（改變滑鼠樣式提示可點選區域）
 // 使用節流來優化性能，避免頻繁讀取像素數據
 function handlePanoramaHover(event) {
+    // 確保ID圖已加載
+    if (!idImage || !idImage.complete || !idCanvas || !idCtx) {
+        return;
+    }
+    
     const now = Date.now();
     
     // 節流：每100毫秒最多執行一次檢測
@@ -269,6 +291,8 @@ function handlePanoramaHover(event) {
     hoverThrottleTimer = requestAnimationFrame(() => {
         const colorType = getColorTypeAtPosition(event.clientX, event.clientY);
         const panoramaContainer = document.querySelector('#panorama');
+        
+        if (!panoramaContainer) return;
         
         // 更新游標樣式和提示框
         if (colorType !== lastCursorType) {
@@ -483,19 +507,39 @@ function cycleTable() {
 
 // 加載全景圖
 function loadPanorama() {
+    if (!viewer) {
+        console.error('全景圖查看器未初始化');
+        return;
+    }
+    
     const imagePath = getCurrentImagePath();
-    const currentHfov = viewer ? viewer.getHfov() : 90;
-    const currentPitch = viewer ? viewer.getPitch() : 0;
-    const currentYaw = viewer ? viewer.getYaw() : 0;
+    console.log('加載全景圖:', imagePath); // 調試信息
     
-    // 先加載ID圖，因為場景切換可能需要時間
-    loadIDImage();
+    const currentHfov = viewer.getHfov() || 90;
+    const currentPitch = viewer.getPitch() || 0;
+    const currentYaw = viewer.getYaw() || 0;
     
+    // 加載場景
     viewer.loadScene('equirectangular', {
         "panorama": imagePath,
         "hfov": currentHfov,
         "pitch": currentPitch,
         "yaw": currentYaw
+    });
+    
+    // 等待場景加載完成後再加載ID圖
+    viewer.once('load', () => {
+        console.log('場景加載完成，開始加載ID圖');
+        setTimeout(() => {
+            loadIDImage();
+            updateIDCanvas();
+        }, 200);
+    });
+    
+    // 處理加載錯誤
+    viewer.once('error', (error) => {
+        console.error('加載全景圖失敗:', error, imagePath);
+        alert('無法加載全景圖: ' + imagePath + '\n請檢查圖片路徑是否正確');
     });
 }
 
