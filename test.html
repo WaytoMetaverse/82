@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖片路徑測試</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .image-test {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 3px solid #4CAF50;
+        }
+        .image-test.error {
+            border-left-color: #f44336;
+        }
+        .image-test img {
+            max-width: 400px;
+            height: auto;
+            display: block;
+            margin-top: 10px;
+        }
+        .path {
+            font-family: monospace;
+            color: #666;
+            font-size: 12px;
+        }
+        .status {
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .status.success {
+            color: #4CAF50;
+        }
+        .status.error {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>環景圖文件加載測試</h1>
+    
+    <div id="test-results"></div>
+    
+    <script>
+        const imagePaths = [
+            '環景圖/客餐廳_A沙發_A茶几.jpg',
+            '環景圖/客餐廳_A沙發_A茶几_ID.jpg',
+            '環景圖/主臥室.jpg',
+            '環景圖/主臥室_ID.jpg',
+            '環景圖/次臥室.jpg',
+            '環景圖/次臥室_ID.jpg',
+            '環景圖/客餐廳_B沙發_A茶几.jpg',
+            '環景圖/客餐廳_C沙發_C茶几.jpg'
+        ];
+        
+        const resultsDiv = document.getElementById('test-results');
+        
+        imagePaths.forEach((path, index) => {
+            const section = document.createElement('div');
+            section.className = 'image-test';
+            section.innerHTML = `
+                <div class="path">路徑: ${path}</div>
+                <div class="status" id="status-${index}">載入中...</div>
+            `;
+            resultsDiv.appendChild(section);
+            
+            const img = new Image();
+            const statusDiv = document.getElementById(`status-${index}`);
+            
+            img.onload = () => {
+                statusDiv.className = 'status success';
+                statusDiv.textContent = `✓ 成功載入 (${img.width} x ${img.height})`;
+                section.appendChild(img);
+            };
+            
+            img.onerror = () => {
+                section.className = 'image-test error';
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '✗ 載入失敗 - 文件不存在或路徑錯誤';
+            };
+            
+            img.src = path;
+        });
+    </script>
+</body>
+</html>
+
