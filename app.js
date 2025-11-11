@@ -694,64 +694,46 @@ function cycleTable() {
     updateUI();
 }
 
-// 加載全景圖
+// 重新加載全景圖
 function loadPanorama() {
-    if (!viewer) {
-        console.error('全景圖查看器未初始化');
-        return;
+    const newPath = getCurrentImagePath();
+    console.log('==== 重新加載全景圖 ====');
+    console.log('路徑:', newPath);
+    
+    // 使用銷毀並重建的方式，確保每次都能正常加載
+    if (viewer) {
+        try {
+            viewer.destroy();
+            console.log('舊查看器已銷毀');
+        } catch (e) {
+            console.log('銷毀查看器時出錯:', e);
+        }
     }
     
-    const imagePath = getCurrentImagePath();
-    const idImagePath = getCurrentIDImagePath();
-    console.log('==== 開始加載全景圖 ====');
-    console.log('全景圖路徑:', imagePath);
-    console.log('ID圖路徑:', idImagePath);
-    
-    try {
-        // 保存當前視角
-        let currentHfov = 90;
-        let currentPitch = 0;
-        let currentYaw = 0;
+    // 延遲創建新查看器，確保舊的已完全銷毀
+    setTimeout(() => {
+        console.log('創建新查看器...');
         
-        try {
-            currentHfov = viewer.getHfov() || 90;
-            currentPitch = viewer.getPitch() || 0;
-            currentYaw = viewer.getYaw() || 0;
-        } catch (e) {
-            console.log('無法獲取當前視角，使用默認值');
-        }
-        
-        // 使用 loadScene 加載新場景
-        // 注意：scene ID 必須唯一，使用時間戳確保唯一性
-        const sceneId = 'scene_' + Date.now();
-        
-        viewer.loadScene(sceneId, {
+        viewer = pannellum.viewer('panorama', {
             "type": "equirectangular",
-            "panorama": imagePath,
-            "hfov": currentHfov,
-            "pitch": currentPitch,
-            "yaw": currentYaw,
-            "autoLoad": true
+            "panorama": newPath,
+            "autoLoad": true,
+            "showControls": true,
+            "hfov": 90,
+            "minHfov": 50,
+            "maxHfov": 120
         });
         
-        console.log('場景加載命令已發送，場景ID:', sceneId);
-        
-        // 延遲加載ID圖，確保場景已經開始加載
-        setTimeout(() => {
-            console.log('開始加載ID圖');
+        viewer.on('load', () => {
+            console.log('✓ 全景圖加載成功');
             loadIDImage();
-            
-            // 等待一段時間後更新ID畫布
-            setTimeout(() => {
-                updateIDCanvas();
-                console.log('==== 全景圖和ID圖加載完成 ====');
-            }, 500);
-        }, 300);
+        });
         
-    } catch (e) {
-        console.error('加載場景時發生錯誤:', e);
-        console.error('錯誤堆棧:', e.stack);
-    }
+        viewer.on('error', (err) => {
+            console.error('✗ 全景圖加載失敗:', err);
+            console.error('嘗試的路徑:', newPath);
+        });
+    }, 150);
 }
 
 // 設置按鈕事件
