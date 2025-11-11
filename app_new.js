@@ -76,14 +76,21 @@ function init() {
     viewer.on('load', () => {
         console.log('✓ 全景圖加載成功');
         loadIDViewer();
+        
+        // 在主查看器加載後設置鼠標事件
+        setTimeout(() => {
+            setupMouseEvents();
+            console.log('✓ 鼠標事件已設置');
+        }, 500);
+    });
+    
+    viewer.on('error', (err) => {
+        console.error('全景圖加載失敗:', err);
     });
     
     // 設置按鈕和UI
     setupButtons();
     updateUI();
-    
-    // 設置鼠標事件
-    setupMouseEvents();
 }
 
 // 加載ID圖查看器（隱藏的，與主查看器同步）
@@ -166,20 +173,27 @@ function setupMouseEvents() {
     let hoverTimeout = null;
     let lastColorType = null;
     
+    console.log('設置鼠標事件...');
+    
     panoramaDiv.addEventListener('mousemove', (e) => {
+        console.log('鼠標移動事件觸發');
+        
         if (hoverTimeout) return;
         
         hoverTimeout = setTimeout(() => {
+            console.log('開始檢測顏色...');
+            
             // 先同步ID查看器
             syncIDViewer();
             
             setTimeout(() => {
                 const colorType = getColorAtPosition(e.clientX, e.clientY);
+                console.log('檢測結果:', colorType);
                 
                 if (colorType !== lastColorType) {
                     if (colorType) {
                         panoramaDiv.style.cursor = 'pointer';
-                        console.log('✓ 檢測到:', colorType);
+                        console.log('✓ 準備繪製高亮:', colorType);
                         drawHighlight(colorType);
                     } else {
                         panoramaDiv.style.cursor = 'default';
@@ -189,29 +203,34 @@ function setupMouseEvents() {
                 }
                 
                 hoverTimeout = null;
-            }, 30);
-        }, 80);
+            }, 50);
+        }, 100);
     });
     
     panoramaDiv.addEventListener('mouseleave', () => {
+        console.log('鼠標離開');
         clearHighlight();
         panoramaDiv.style.cursor = 'default';
         lastColorType = null;
     });
     
     panoramaDiv.addEventListener('click', (e) => {
+        console.log('點擊事件觸發');
         syncIDViewer();
         setTimeout(() => {
             handleClick(e);
-        }, 30);
+        }, 50);
     });
     
     // 監聽視角變化
     if (viewer) {
         viewer.on('mouseup', () => {
+            console.log('視角變化，同步ID查看器');
             setTimeout(syncIDViewer, 50);
         });
     }
+    
+    console.log('✓ 鼠標事件設置完成');
 }
 
 // 處理懸停
@@ -282,7 +301,17 @@ function getColorAtPosition(clientX, clientY) {
 
 // 繪製高亮（使用ID查看器的canvas提取輪廓）
 function drawHighlight(colorType) {
-    if (!highlightCtx || !idViewer) return;
+    console.log('drawHighlight 被調用，類型:', colorType);
+    
+    if (!highlightCtx) {
+        console.log('highlightCtx 不存在');
+        return;
+    }
+    
+    if (!idViewer) {
+        console.log('idViewer 不存在');
+        return;
+    }
     
     clearHighlight();
     
