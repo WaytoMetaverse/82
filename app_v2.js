@@ -488,7 +488,7 @@ function checkIfEdgeInPanorama(x, y, width, height, pixels, targetColor) {
 }
 
 
-// 繪製白色外框高亮 - 掃描ID圖並在色塊外圍繪製白色輪廓
+// 繪製白色外框高亮 - 在當前視野中掃描並繪製色塊輪廓
 function drawSimpleHighlight(x, y, colorType) {
     if (!highlightCtx || !idImage || !idImage.complete || !viewer) {
         console.log('高亮繪製條件未滿足');
@@ -506,10 +506,23 @@ function drawSimpleHighlight(x, y, colorType) {
     
     const rect = canvas.getBoundingClientRect();
     
+    // 獲取當前視角參數
+    let currentPitch = 0;
+    let currentYaw = 0;
+    let currentHfov = 90;
+    
+    try {
+        currentPitch = viewer.getPitch() || 0;
+        currentYaw = viewer.getYaw() || 0;
+        currentHfov = viewer.getHfov() || 90;
+    } catch (e) {
+        console.log('無法獲取視角參數');
+    }
+    
     // 創建臨時畫布來讀取ID圖
-    const tempCanvas = document.createElement('canvas');
     const imgWidth = idImage.width;
     const imgHeight = idImage.height;
+    const tempCanvas = document.createElement('canvas');
     tempCanvas.width = imgWidth;
     tempCanvas.height = imgHeight;
     const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
@@ -518,18 +531,20 @@ function drawSimpleHighlight(x, y, colorType) {
     const imageData = tempCtx.getImageData(0, 0, imgWidth, imgHeight);
     const pixels = imageData.data;
     
-    // 使用白色外框
+    // 設置白色外框樣式
     highlightCtx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    highlightCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
     highlightCtx.lineWidth = 3;
-    highlightCtx.setLineDash([]);
-    highlightCtx.shadowBlur = 10;
+    highlightCtx.shadowBlur = 12;
     highlightCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
     
     console.log('開始繪製白色外框，顏色類型:', colorType);
     
-    // 掃描ID圖，找出所有匹配顏色的邊緣像素
-    const step = 4; // 每4個像素檢測一次
     let edgeCount = 0;
+    const vfov = 2 * Math.atan(Math.tan(currentHfov * Math.PI / 360) * (rect.height / rect.width)) * 180 / Math.PI;
+    
+    // 掃描當前視野範圍對應的ID圖區域
+    const step = 3; // 每3個像素檢測一次
     
     for (let py = 0; py < imgHeight; py += step) {
         for (let px = 0; px < imgWidth; px += step) {
@@ -543,24 +558,28 @@ function drawSimpleHighlight(x, y, colorType) {
                 const isEdge = checkIfEdgeInPanorama(px, py, imgWidth, imgHeight, pixels, targetColor);
                 
                 if (isEdge) {
-                    // 將全景圖像素坐標轉換為pitch/yaw
-                    const yaw = (px / imgWidth) * 360 - 180;
-                    const pitch = 90 - (py / imgHeight) * 180;
+                    // 將全景圖像素轉換為pitch/yaw
+                    const pixelYaw = (px / imgWidth) * 360 - 180;
+                    const pixelPitch = 90 - (py / imgHeight) * 180;
                     
-                    // 使用Pannellum的API將pitch/yaw轉換為屏幕座標
-                    try {
-                        const screenCoords = viewer.pitchYawToScreen(pitch, yaw);
-                        if (screenCoords && screenCoords[0] !== null && screenCoords[1] !== null) {
-                            const screenX = screenCoords[0] + rect.left;
-                            const screenY = screenCoords[1] + rect.top;
-                            
-                            // 繪製白色邊緣點
-                            highlightCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                            highlightCtx.fillRect(screenX - 1.5, screenY - 1.5, 3, 3);
-                            edgeCount++;
-                        }
-                    } catch (e) {
-                        // 該點不在當前視野內，跳過
+                    // 計算這個像素相對於當前視角的偏移
+                    let yawDiff = pixelYaw - currentYaw;
+                    
+                    // 處理yaw的環繞（-180到180）
+                    while (yawDiff > 180) yawDiff -= 360;
+                    while (yawDiff < -180) yawDiff += 360;
+                    
+                    const pitchDiff = pixelPitch - currentPitch;
+                    
+                    // 檢查是否在當前視野內
+                    if (Math.abs(yawDiff) <= currentHfov / 2 && Math.abs(pitchDiff) <= vfov / 2) {
+                        // 轉換為屏幕座標
+                        const screenX = (yawDiff / currentHfov) * rect.width + rect.width / 2 + rect.left;
+                        const screenY = -(pitchDiff / vfov) * rect.height + rect.height / 2 + rect.top;
+                        
+                        // 繪製白色邊緣點
+                        highlightCtx.fillRect(screenX - 1.5, screenY - 1.5, 3, 3);
+                        edgeCount++;
                     }
                 }
             }
